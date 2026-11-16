@@ -551,8 +551,52 @@ def generate_mod_exports(
     return export_object
 
 
+def ios_link_inputs(dependencies):
+    """The system libraries an iOS link needs: what the static SDL3 built for
+    this SDK records in its own pkg-config file, and the game's own."""
+    text = (dependencies / "lib/pkgconfig/sdl3.pc").read_text()
+    private = next(
+        line.split(":", 1)[1]
+        for line in text.splitlines()
+        if line.startswith("Libs.private:")
+    )
+    words, result = private.split(), []
+    for index, word in enumerate(words):
+        if word in ("-framework", "-weak_framework") and index + 1 < len(words):
+            result += [word, words[index + 1]]
+        elif word.startswith("-Wl,") and "framework" in word:
+            result.append(word)
+        elif word.startswith("-l") and word not in ("-lSDL3", "-lm"):
+            result.append(word)
+    for framework in ("CoreText", "CoreGraphics", "Foundation", "UIKit", "OpenGLES"):
+        if framework not in words:
+            result += ["-framework", framework]
+    return result
+
+
+def ios_linker(cc):
+    """The pinned LLVM links iOS when it ships that platform's compiler-rt;
+    otherwise Xcode's clang does, with the same objects."""
+    llvm = Path(cc).parents[1]
+    if list(llvm.glob("lib/clang/*/lib/darwin/libclang_rt.ios.a")):
+        return cc
+    return subprocess.check_output(
+        ["xcrun", "--sdk", "iphoneos", "--find", "clang"], text=True
+    ).strip()
+
+
 def link_game(
-    build, jobs, path_for, tables, export_object, cc, sdk, flags, dependencies
+    build,
+    jobs,
+    path_for,
+    tables,
+    export_object,
+    cc,
+    sdk,
+    flags,
+    dependencies,
+    platform_name="macos",
+    executable="memories-arm64",
 ):
     """Compile generated tables and link the native executable."""
     generated_tables = build / "tables.c"
@@ -564,6 +608,37 @@ def link_game(
     )
     if status:
         raise SystemExit("Table compilation failed: " + str(build / "logs/tables.log"))
+    if platform_name == "ios":
+        linker = ios_linker(cc)
+        print(f"iOS link driver: {linker}", flush=True)
+        command = [
+            linker,
+            *darwin_flags(sdk, platform_name),
+            *[str(path_for("obj", s, ".o")) for s, g in jobs],
+            str(tables_obj),
+            str(export_object),
+            *[
+                str(dependencies / "lib" / name)
+                for name in ["libfreetype.a", "libpng16.a", "libz.a", "libSDL3.a"]
+            ],
+            "-liconv",
+            *ios_link_inputs(dependencies),
+            "-Wl,-export_dynamic",
+            "-o",
+            str(build / executable),
+        ]
+        (build / "link-command.json").write_text(json.dumps(command, indent=2) + "\n")
+        status = run_logged(command, build / "logs/link.log")
+        print(
+            "Link "
+            + (
+                "failed: " + str(build / "logs/link.log")
+                if status
+                else "succeeded: " + str(build / executable)
+            ),
+            flush=True,
+        )
+        return status
     command = [
         cc,
         *darwin_flags(sdk),
@@ -648,9 +723,6 @@ def main():
     target = TARGETS[args.target]
     if args.build is None:
         args.build = ROOT / target["build"]
-    if args.target == "ios" and not args.compile_only:
-        # Port/eame brings iOS up in stages; the app link is the next one.
-        raise SystemExit("The iOS target compiles only for now: pass --compile-only")
     llvm = toolchain()
     cc = str(llvm / "bin/clang")
     from macos_deps import IOS_NAMES, ensure, sdk_path
@@ -815,7 +887,17 @@ def main():
         build, jobs, path_for, raw_text, aliases, linked_defs, pin_maps, cc, flags
     )
     status = link_game(
-        build, jobs, path_for, tables, export_object, cc, sdk, flags, dependencies
+        build,
+        jobs,
+        path_for,
+        tables,
+        export_object,
+        cc,
+        sdk,
+        flags,
+        dependencies,
+        args.target,
+        target["executable"],
     )
     from build_game32 import release_version
 
@@ -825,7 +907,7 @@ def main():
             version=release_version(),
             fingerprint=fingerprint_file.read_text().strip(),
             binary_sha256=hashlib.sha256(
-                (build / "memories-arm64").read_bytes()
+                (build / target["executable"]).read_bytes()
             ).hexdigest(),
         )
         (build / "build-identity.json").write_text(
