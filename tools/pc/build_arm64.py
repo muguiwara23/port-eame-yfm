@@ -61,6 +61,20 @@ ORDINARY = {
 }
 
 
+def shared_release_version():
+    """build_game32's release_version. That module reads --target from the
+    command line as it is imported and knows only its own targets, so it is
+    imported without this driver's arguments (--target ios)."""
+    import sys
+
+    saved, sys.argv = sys.argv, sys.argv[:1]
+    try:
+        from build_game32 import release_version
+    finally:
+        sys.argv = saved
+    return release_version
+
+
 def definitions(ir):
     return set(inspect(ir)["definitions"])
 
@@ -464,7 +478,7 @@ def generate_function_tables(
         + hashlib.sha256("".join(raw_text.values()).encode()).hexdigest()[:8]
         + "u;\n"
     )
-    from build_game32 import release_version
+    release_version = shared_release_version()
 
     tables += f"const char Memories_Version[] = {json.dumps(release_version())};\n"
     build_label = os.environ.get("MEMORIES_VERSION") or "dev-" + revision[:12]
@@ -899,7 +913,7 @@ def main():
         args.target,
         target["executable"],
     )
-    from build_game32 import release_version
+    release_version = shared_release_version()
 
     if not status:
         identity = dict(
