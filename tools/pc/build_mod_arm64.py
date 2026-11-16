@@ -11,10 +11,11 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from build_config import MACOS_MINIMUM
+from build_config import TARGETS
 from guest_build import (
     CHECKED_LIBC,
     HOST_LIBC,
+    darwin_flags,
     guest_frontend_flags,
     maps,
 )
@@ -85,7 +86,9 @@ def validate_imports(text, signatures):
     return has_entry
 
 
-def compile_units(sources, folder, compiler, sdk, flags, aliases, signatures, pins):
+def compile_units(
+    sources, folder, compiler, sdk, flags, aliases, signatures, pins, platform_name="macos"
+):
     """Compile original C at O0, lower guest accesses, then generate O2 objects."""
     objects, routines = [], []
     has_entry = False
@@ -116,9 +119,7 @@ def compile_units(sources, folder, compiler, sdk, flags, aliases, signatures, pi
         subprocess.run(
             [
                 compiler,
-                "-isysroot",
-                sdk,
-                f"-mmacosx-version-min={MACOS_MINIMUM}",
+                *darwin_flags(sdk, platform_name),
                 "-O2",
                 "-c",
                 str(ir),
@@ -134,8 +135,16 @@ def compile_units(sources, folder, compiler, sdk, flags, aliases, signatures, pi
     return objects, routines
 
 
-def link_library(folder, library_name, objects, routines, compiler, sdk, exported):
+def link_library(
+    folder, library_name, objects, routines, compiler, sdk, exported, platform_name="macos"
+):
     """Pair global registration/cleanup and reject imports absent from the game."""
+    linker = compiler
+    if platform_name == "ios":
+        # As the game's own link: the pinned LLVM where it has iOS compiler-rt.
+        from build_arm64 import ios_linker
+
+        linker = ios_linker(compiler)
     registration = folder / "registration.c"
     registration.write_text(
         "".join(
@@ -153,10 +162,8 @@ def link_library(folder, library_name, objects, routines, compiler, sdk, exporte
     staged.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(
         [
-            compiler,
-            "-isysroot",
-            sdk,
-            f"-mmacosx-version-min={MACOS_MINIMUM}",
+            linker,
+            *darwin_flags(sdk, platform_name),
             "-dynamiclib",
             "-Wl,-undefined,dynamic_lookup",
             *objects,
@@ -195,7 +202,9 @@ def link_library(folder, library_name, objects, routines, compiler, sdk, exporte
     return staged
 
 
-def build(directory, out=None, *, game=None):
+def build(directory, out=None, *, game=None, platform_name="macos"):
+    """platform_name "ios" builds the same translated dylib for the iOS game
+    (tmp/pc/ios): it loads only from inside the signed app bundle."""
     directory = Path(directory).resolve()
     sources = sorted(directory.glob("*.c"))
     if not sources:
@@ -211,7 +220,7 @@ def build(directory, out=None, *, game=None):
     )
     output = Path(out).resolve() / library_name if out else directory / library_name
     output.parent.mkdir(parents=True, exist_ok=True)
-    game = Path(game).resolve() if game else ROOT / "tmp/pc/macos"
+    game = Path(game).resolve() if game else ROOT / TARGETS[platform_name]["build"]
     if not (game / "exports.txt").is_file():
         raise SystemExit(
             "build the ARM64 game first; its exports.txt validates mod imports"
@@ -233,9 +242,10 @@ def build(directory, out=None, *, game=None):
     )
     aliases.update(rand="Mods_ModRand", srand="Mods_ModSrand")
     compiler = str(toolchain() / "bin/clang")
-    sdk = str(sdk_path())
+    sdk = str(sdk_path(platform_name))
     flags = [
-        *guest_frontend_flags(sdk),
+        *guest_frontend_flags(sdk, platform_name),
+        *(["-DMEMORIES_IOS"] if platform_name == "ios" else []),
         "-fno-common",
         "-DMEMORIES_MOD",
         "-I" + str(directory),
@@ -290,10 +300,10 @@ def build(directory, out=None, *, game=None):
     folder.mkdir(parents=True, exist_ok=True)
     pins = mod_pins(game_summary, maps().values())
     objects, routines = compile_units(
-        sources, folder, compiler, sdk, flags, aliases, signatures, pins
+        sources, folder, compiler, sdk, flags, aliases, signatures, pins, platform_name
     )
     staged = link_library(
-        folder, library_name, objects, routines, compiler, sdk, exported
+        folder, library_name, objects, routines, compiler, sdk, exported, platform_name
     )
     with tempfile.NamedTemporaryFile(
         dir=output.parent, prefix="." + output.name, delete=False
@@ -302,5 +312,8 @@ def build(directory, out=None, *, game=None):
         temporary_path = Path(temporary.name)
     temporary_path.chmod(0o755)
     temporary_path.replace(output)
-    print(f"{output}: macOS ARM64, {len(sources)} translated source(s)")
+    print(
+        f"{output}: {'iOS' if platform_name == 'ios' else 'macOS'} ARM64, "
+        f"{len(sources)} translated source(s)"
+    )
     return output

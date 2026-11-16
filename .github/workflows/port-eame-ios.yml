@@ -16,8 +16,8 @@ concurrency:
 
 jobs:
   ios-compile:
-    name: iOS build and unsigned IPA (macos-26)
-    runs-on: macos-26
+    name: iOS build and unsigned IPA (macos-15)
+    runs-on: macos-15
     timeout-minutes: 90
     defaults:
       run:
@@ -75,6 +75,11 @@ jobs:
         run: |
           python tools/pc/package_ios.py --version "0.3.0-ios-dev.${{ github.run_number }}"
           unzip -l tmp/pc-release/ios/*.ipa
+          for library in "tmp/pc-release/ios/stage/Payload/YFM Re-Decomp.app"/mods/*/*.dylib; do
+            echo "== $library"
+            xcrun lipo -info "$library"
+            xcrun otool -l "$library" | awk '/LC_BUILD_VERSION/{f=1} f&&/(platform|minos)/{print} f&&/ntools/{f=0}'
+          done
           plutil -p "tmp/pc-release/ios/stage/Payload/YFM Re-Decomp.app/Info.plist"
       - uses: actions/upload-artifact@v4
         with:

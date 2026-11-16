@@ -3,8 +3,11 @@
 
 Writes Payload/YFM Re-Decomp.app (the executable, Info.plist, the language
 packs and license notices) and zips it as an .ipa under tmp/pc-release/ios.
-The package holds no disc data, no saves and no code mods, and it is NOT
-signed: iOS runs it only after the player's own signing tool has signed it.
+The repository's own mods are staged in the app's mods folder, their code
+built as iOS ARM64 dylibs for this exact game build (build_mod_arm64.py).
+The package holds no disc data and no saves, and it is NOT signed: iOS runs
+it, and loads those dylibs, only after the player's own signing tool has
+signed the whole bundle.
 The disc image goes in the app's Documents/game folder through the Files
 app (UIFileSharingEnabled)."""
 import argparse
@@ -76,12 +79,56 @@ def info_plist(version, build_number, bundle_id):
     )
 
 
+def shipped_mod_files():
+    """Only repository-owned resources, never locally installed mods or objects."""
+    tracked = subprocess.check_output(
+        ["git", "ls-files", "-z", "mods"], cwd=ROOT, text=True
+    ).split("\0")
+    return [
+        Path(name)
+        for name in tracked
+        if name and Path(name).suffix not in (".c", ".h", ".o", ".dylib")
+    ]
+
+
+def stage_mods(app, game):
+    """The mods beside the program, where the game looks for its own
+    (Paths_Program "mods"); code mods as dylibs iOS loads from the bundle."""
+    from build_mod_arm64 import build
+
+    files = shipped_mod_files()
+    libraries = []
+    for relative in files:
+        destination = app / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / relative, destination)
+    for relative in files:
+        if relative.name != "mod.json":
+            continue
+        manifest = json.loads((ROOT / relative).read_text(encoding="utf-8-sig"))
+        if manifest.get("library"):
+            library = build(
+                ROOT / relative.parent, app / relative.parent, game=game, platform_name="ios"
+            )
+            subprocess.run(
+                ["xcrun", "codesign", "--remove-signature", str(library)], check=False
+            )
+            libraries.append(library)
+    return files, libraries
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("--binary", type=Path, default=ROOT / "tmp/pc/ios" / EXECUTABLE)
     parser.add_argument("--out", type=Path, default=ROOT / "tmp/pc-release/ios")
     parser.add_argument("--version", default="dev-local")
     parser.add_argument("--bundle-id", default="org.porteame.yfm-redecomp")
+    parser.add_argument(
+        "--mods",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Stage the repository's mods and build their iOS dylibs (default)",
+    )
     options = parser.parse_args()
     binary = options.binary.resolve()
     if not binary.is_file():
@@ -108,6 +155,10 @@ def main():
     languages.mkdir()
     for name in LANGUAGES:
         shutil.copyfile(ROOT / f"languages/{name}.txt", languages / f"{name}.txt")
+    mod_libraries = []
+    if options.mods:
+        mod_files, mod_libraries = stage_mods(app, binary.parent)
+        print(f"mods: {len(mod_files)} files, {len(mod_libraries)} iOS dylibs")
     licenses = app / "licenses"
     licenses.mkdir()
     shutil.copyfile(ROOT / "LICENSE", app / "LICENSE.txt")
@@ -138,7 +189,7 @@ def main():
             if path.is_dir():
                 continue
             entry = zipfile.ZipInfo.from_file(path, name)
-            mode = 0o755 if path == executable else 0o644
+            mode = 0o755 if path == executable or path in mod_libraries else 0o644
             entry.external_attr = (stat.S_IFREG | mode) << 16
             entry.compress_type = zipfile.ZIP_DEFLATED
             bundle.writestr(entry, path.read_bytes())
