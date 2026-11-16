@@ -6,7 +6,9 @@
 #ifdef MEMORIES_IOS
 #include "pc/platform/ios.h"
 #include "pc/platform/platform.h"
+#include "pc/compat/fs.h" /* the port's file-name boundary (check_utf8_paths.py) */
 #include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -49,6 +51,7 @@ void Ios_Startup(void)
     const char *home = getenv("HOME");
     char documents[900], path[1024], previous[1024];
     time_t now = time(NULL);
+    int log;
     if (!home || !*home) return;
     snprintf(documents, sizeof(documents), "%s/Documents", home);
     mkdir(documents, 0755);
@@ -60,10 +63,14 @@ void Ios_Startup(void)
     snprintf(path, sizeof(path), "%s/port-eame-log.txt", documents);
     snprintf(previous, sizeof(previous), "%s/port-eame-log-previous.txt", documents);
     rename(path, previous);
-    if (freopen(path, "w", stderr)) {
-        setvbuf(stderr, NULL, _IONBF, 0);
+    log = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (log >= 0) {
         fflush(stdout);
-        dup2(fileno(stderr), fileno(stdout));
+        fflush(stderr);
+        dup2(log, STDERR_FILENO);
+        dup2(log, STDOUT_FILENO);
+        close(log);
+        setvbuf(stderr, NULL, _IONBF, 0);
         setvbuf(stdout, NULL, _IOLBF, 0);
     }
     fprintf(stderr, "Port/eame iOS: started %s", ctime(&now));
