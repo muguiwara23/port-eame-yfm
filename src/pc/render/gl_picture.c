@@ -292,9 +292,9 @@ static unsigned glyphs_generation = ~0u;
 static GLint u_glyphs;
 
 static const char *vertex_source =
-#ifdef __APPLE__
+#if defined(__APPLE__) && !defined(MEMORIES_IOS) /* macOS: a 3.2 core context */
     "#version 150\n"
-#else
+#else /* iOS draws in OpenGL ES 3, made from the 1.30 source (es_source) */
     "#version 130\n"
 #endif
     "uniform vec2 picture_size;\n"
@@ -429,9 +429,9 @@ static const char *vertex_source =
  * them. pass: 0 every fragment, 1 the opaque ones, 2 the semi-transparent.
  * op 1: VRAM into the picture. op 2: the scratch copy into the picture. */
 static const char *fragment_source =
-#ifdef __APPLE__
+#if defined(__APPLE__) && !defined(MEMORIES_IOS) /* macOS: a 3.2 core context */
     "#version 150\n"
-#else
+#else /* iOS draws in OpenGL ES 3, made from the 1.30 source (es_source) */
     "#version 130\n"
 #endif
     "uniform usampler2D vram;\n"
