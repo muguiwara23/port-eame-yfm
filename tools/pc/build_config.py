@@ -6,6 +6,9 @@ ROOT = Path(__file__).resolve().parents[2]
 
 # Declared deployment baseline; runtime compatibility is validated separately.
 MACOS_MINIMUM = "11.0"
+# Port/eame: the iOS deployment baseline. SDL 3.4 itself needs iOS 11; 16.0
+# covers every arm64 iPhone still updated, the iPhone 12 Pro included.
+IOS_MINIMUM = "16.0"
 
 # Keep host platform, machine architecture, native calling ABI, and guest
 # memory strategy explicit.  In particular, Windows x64 is still the fixed

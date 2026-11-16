@@ -1,0 +1,59 @@
+name: Port/eame iOS
+
+# Port/eame: the iOS ARM64 build, brought up one stage at a time on the
+# port-eame/ios branch. No disc, no secrets and no signing identity are used.
+on:
+  push:
+    branches: ['port-eame/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: port-eame-ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios-deps:
+    name: iOS static dependencies (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            tmp/pc/llvm-macos
+            tmp/pc/tools/macos
+          key: port-eame-ios-llvm21.1.8-${{ hashFiles('tools/pc/macos_toolchain.json', 'tools/pc/fetch_tools.py') }}
+      - name: Xcode and iOS SDK
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-path
+          xcrun --sdk iphoneos --show-sdk-version
+      - name: Build and check zlib, libpng, FreeType and SDL3 for iOS ARM64
+        run: python tools/pc/build_ios_deps.py
+      - name: Record what was built
+        if: always()
+        run: |
+          mkdir -p tmp/port-eame-report
+          ls -l tmp/pc/ios-deps/install/lib > tmp/port-eame-report/libraries.txt 2>&1 || true
+          find tmp/pc/ios-deps/build -name CMakeCache.txt -maxdepth 2 \
+            -exec grep -H -E '^CMAKE_(SYSTEM_NAME|OSX_SYSROOT|OSX_DEPLOYMENT_TARGET|C_COMPILER):' {} + \
+            > tmp/port-eame-report/cmake.txt 2>&1 || true
+          find tmp/pc/ios-deps/build -name CMakeConfigureLog.yaml -maxdepth 3 \
+            -exec sh -c 'mkdir -p "tmp/port-eame-report/$(basename "$(dirname "$(dirname "$1")")")" && cp "$1" "tmp/port-eame-report/$(basename "$(dirname "$(dirname "$1")")")/"' _ {} \; || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: port-eame-ios-deps-report
+          path: tmp/port-eame-report
+          if-no-files-found: warn
+          retention-days: 14

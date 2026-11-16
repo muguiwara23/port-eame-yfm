@@ -1,4 +1,8 @@
-"""Pinned static macOS ARM64 dependencies; no package manager required."""
+"""Pinned static macOS ARM64 dependencies; no package manager required.
+
+The same builder cross-compiles the libraries the game links for iOS ARM64
+(platform="ios"): its own tree under tmp/pc/ios-deps, the iphoneos SDK and
+CMake's iOS system name. The macOS defaults are unchanged."""
 
 import hashlib
 import json
@@ -9,7 +13,7 @@ import subprocess
 import tarfile
 from pathlib import Path
 
-from build_config import MACOS_MINIMUM
+from build_config import IOS_MINIMUM, MACOS_MINIMUM
 from dependency_archives import ARCHIVES
 from fetch_tools import download, unpack
 from fetch_tools import ensure as ensure_tool
@@ -17,29 +21,37 @@ from fetch_tools import ensure as ensure_tool
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "tmp/pc/macos-deps"
 INSTALL = OUT / "install"
+# platform: (xcrun SDK name, dependency tree, deployment baseline)
+PLATFORMS = {
+    "macos": ("macosx", OUT, MACOS_MINIMUM),
+    "ios": ("iphoneos", ROOT / "tmp/pc/ios-deps", IOS_MINIMUM),
+}
+# The libraries the iOS game links. zstd is only LLVM's own (host) dependency.
+IOS_NAMES = ("zlib", "libpng", "freetype", "sdl-source")
 
 
-def sdk_path():
+def sdk_path(platform_name="macos"):
+    sdk_name = PLATFORMS[platform_name][0]
     sdk = Path(
         subprocess.check_output(
-            ["xcrun", "--sdk", "macosx", "--show-sdk-path"], text=True
+            ["xcrun", "--sdk", sdk_name, "--show-sdk-path"], text=True
         ).strip()
     )
     if not (sdk / "usr/include/stdlib.h").is_file():
-        raise RuntimeError(f"xcrun returned an invalid macOS SDK: {sdk}")
+        raise RuntimeError(f"xcrun returned an invalid {sdk_name} SDK: {sdk}")
     return sdk
 
 
-def source(name):
+def source(name, out=OUT):
     url, digest = ARCHIVES[name]
     archive = download(url, digest)
-    folder = OUT / "src" / name
+    folder = out / "src" / name
     stamp = folder / ".archive-sha256"
     if stamp.is_file() and stamp.read_text() == digest:
         return folder
     with tarfile.open(archive) as bundle:
         top = bundle.getnames()[0].split("/")[0]
-    temporary = OUT / "src" / (name + ".extract")
+    temporary = out / "src" / (name + ".extract")
     shutil.rmtree(temporary, ignore_errors=True)
     unpack(archive, str(temporary))
     shutil.rmtree(folder, ignore_errors=True)
@@ -49,13 +61,26 @@ def source(name):
     return folder
 
 
-def ensure(names=("zstd", "zlib", "libpng", "freetype", "sdl-source"), jobs=8):
+def ensure(
+    names=("zstd", "zlib", "libpng", "freetype", "sdl-source"),
+    jobs=8,
+    platform_name="macos",
+):
     if platform.system() != "Darwin" or platform.machine() != "arm64":
         raise RuntimeError("macOS dependency builder requires an ARM64 Mac")
     from llvm_guest import toolchain
 
     llvm = toolchain()
-    sdk = sdk_path()
+    sdk = sdk_path(platform_name)
+    _, out, minimum = PLATFORMS[platform_name]
+    install = out / "install"
+    # CMake's iOS system name selects the iphoneos platform flags. A static
+    # library try-compile needs no linked, signed executable.
+    system = (
+        ["-DCMAKE_SYSTEM_NAME=iOS", "-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY"]
+        if platform_name == "ios"
+        else []
+    )
     cmake, ninja = ensure_tool("cmake", pinned=True), ensure_tool("ninja", pinned=True)
     options = {
         "zstd": [
@@ -75,8 +100,8 @@ def ensure(names=("zstd", "zlib", "libpng", "freetype", "sdl-source"), jobs=8):
             "-DPNG_TESTS=OFF",
             "-DPNG_TOOLS=OFF",
             "-DPNG_FRAMEWORK=OFF",
-            f"-DZLIB_LIBRARY={INSTALL}/lib/libz.a",
-            f"-DZLIB_INCLUDE_DIR={INSTALL}/include",
+            f"-DZLIB_LIBRARY={install}/lib/libz.a",
+            f"-DZLIB_INCLUDE_DIR={install}/include",
         ],
         "freetype": [
             "-DBUILD_SHARED_LIBS=OFF",
@@ -116,10 +141,10 @@ def ensure(names=("zstd", "zlib", "libpng", "freetype", "sdl-source"), jobs=8):
         "ninja": tool_identity(ninja, "--version"),
     }
     for name in names:
-        directory = source(name)
+        directory = source(name, out)
         if name == "zstd":
             directory /= "build/cmake"
-        build = OUT / "build" / name
+        build = out / "build" / name
         stamp = build / "complete.json"
         command = [
             cmake,
@@ -133,12 +158,13 @@ def ensure(names=("zstd", "zlib", "libpng", "freetype", "sdl-source"), jobs=8):
             "-DCMAKE_BUILD_TYPE=Release",
             f"-DCMAKE_C_COMPILER={llvm}/bin/clang",
             f"-DCMAKE_CXX_COMPILER={llvm}/bin/clang++",
+            *system,
             "-DCMAKE_OSX_ARCHITECTURES=arm64",
-            f"-DCMAKE_OSX_DEPLOYMENT_TARGET={MACOS_MINIMUM}",
+            f"-DCMAKE_OSX_DEPLOYMENT_TARGET={minimum}",
             f"-DCMAKE_OSX_SYSROOT={sdk}",
-            f"-DCMAKE_INSTALL_PREFIX={INSTALL}",
-            f"-DCMAKE_PREFIX_PATH={INSTALL}",
-            f"-DCMAKE_FIND_ROOT_PATH={INSTALL};{sdk}",
+            f"-DCMAKE_INSTALL_PREFIX={install}",
+            f"-DCMAKE_PREFIX_PATH={install}",
+            f"-DCMAKE_FIND_ROOT_PATH={install};{sdk}",
             "-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY",
             "-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY",
             "-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY",
@@ -147,7 +173,7 @@ def ensure(names=("zstd", "zlib", "libpng", "freetype", "sdl-source"), jobs=8):
             "-DCMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH=OFF",
             "-DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF",
             "-DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF",
-            f"-DCMAKE_SYSTEM_PREFIX_PATH={INSTALL};/usr",
+            f"-DCMAKE_SYSTEM_PREFIX_PATH={install};/usr",
             "-DPKG_CONFIG_EXECUTABLE=/usr/bin/false",
             "-DCMAKE_POLICY_VERSION_MINIMUM=3.5",
             *options[name],
@@ -164,7 +190,7 @@ def ensure(names=("zstd", "zlib", "libpng", "freetype", "sdl-source"), jobs=8):
         if (
             stamp.is_file()
             and stamp.read_text() == fingerprint
-            and (INSTALL / "lib" / libraries[name]).is_file()
+            and (install / "lib" / libraries[name]).is_file()
         ):
             continue
         # CMake preserves cached compiler and install-prefix values in its
@@ -185,6 +211,7 @@ def ensure(names=("zstd", "zlib", "libpng", "freetype", "sdl-source"), jobs=8):
                 "LDFLAGS",
                 "SDKROOT",
                 "MACOSX_DEPLOYMENT_TARGET",
+                "IPHONEOS_DEPLOYMENT_TARGET",
             )
         }
         subprocess.run(command, check=True, env=environment)
@@ -194,7 +221,7 @@ def ensure(names=("zstd", "zlib", "libpng", "freetype", "sdl-source"), jobs=8):
             env=environment,
         )
         subprocess.run([cmake, "--install", str(build)], check=True, env=environment)
-        if not (INSTALL / "lib" / libraries[name]).is_file():
+        if not (install / "lib" / libraries[name]).is_file():
             raise RuntimeError(f"{name} did not install {libraries[name]}")
         stamp.write_text(fingerprint)
-    return INSTALL
+    return install
