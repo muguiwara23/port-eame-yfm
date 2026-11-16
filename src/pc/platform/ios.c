@@ -7,6 +7,7 @@
 #include "pc/platform/ios.h"
 #include "pc/platform/platform.h"
 #include "pc/compat/fs.h" /* the port's file-name boundary (check_utf8_paths.py) */
+#include <SDL3/SDL.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -81,6 +82,12 @@ void Ios_Startup(void)
      * hidden until MENU is tapped, and the touch controls show), and no
      * update check, since an app is not updated by a download. */
     setenv("MEMORIES_FULLSCREEN", "1", 0);
+    /* The window is resizable, which SDL takes for "any orientation", and
+     * Info.plist's landscape is not read when another app hosts this one.
+     * Without this the window was made portrait (1170x2532 on a phone held
+     * sideways) and the first seconds were laid out for that, until the
+     * rotation's resize arrived. As android.c asks. */
+    SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
     setenv("MEMORIES_NO_MONITOR", "1", 0);
     setenv("MEMORIES_NO_UPDATE_CHECK", "1", 0);
 }
