@@ -16,8 +16,8 @@ concurrency:
 
 jobs:
   ios-compile:
-    name: iOS build and unsigned IPA (macos-15)
-    runs-on: macos-15
+    name: iOS build and unsigned IPA (macos-26)
+    runs-on: macos-26
     timeout-minutes: 90
     defaults:
       run:
