@@ -58,6 +58,8 @@ ORDINARY = {
     "src/pc/guest/image_loader.c",
     "src/pc/mods/hooks.c",
     "src/pc/mods/object_loader.c",
+    # Host-only startup services (empty off iOS): no guest storage in them.
+    "src/pc/platform/ios.c",
 }
 
 
@@ -786,6 +788,8 @@ def main():
         "-Wno-int-conversion",
         "-Wno-implicit-function-declaration",
     ]
+    if args.target == "ios":
+        flags.append("-DMEMORIES_IOS")
     game_extra = ["-include", "src/pc/compat/pgxp_game.h"]
     if not args.optimize or args.instrument_softgpu:
         flags.append("-DMEMORIES_INSTRUMENT_SOFTGPU")

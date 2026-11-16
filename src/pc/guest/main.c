@@ -25,6 +25,13 @@
 #include <mach-o/dyld.h>
 #include <errno.h>
 #endif
+#ifdef MEMORIES_IOS
+/* UIKit owns an iOS process's main. SDL's (SDL_main.h) starts the
+ * application and its scene, and calls this file's main, renamed SDL_main,
+ * from the app delegate once the scene is connected. */
+#include <SDL3/SDL_main.h>
+#include "pc/platform/ios.h"
+#endif
 
 /* MEMORIES_RESTART_ENV="NAME=value;NAME=;...": what a scripted check changes
  * in the environment the restarted game starts with (an empty value removes
@@ -190,6 +197,9 @@ static void user_dir_fact(int writable, const char *why)
 
 int main(int argc, char **argv)
 {
+#ifdef MEMORIES_IOS
+    Ios_Startup();
+#endif
 #ifdef _WIN32
     /* main's narrow argv is lossy under a legacy Windows code page. */
     argv = Memories_Argv(&argc);

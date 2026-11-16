@@ -59,6 +59,12 @@
 #else
 #define HERE(name) name
 #endif
+/* A phone or tablet app, Android's or iOS's (Port/eame): one window that is
+ * always the whole screen, touched rather than pointed at, with no file
+ * manager to open. What only Android has (its Java side) stays its own. */
+#if defined(SDL_PLATFORM_ANDROID) || defined(MEMORIES_IOS)
+#define MEMORIES_HANDHELD 1
+#endif
 #include "pc/compat/sdl_opengl.h"
 #include "pc/render/gl_picture.h"
 #include "pc/compat/signal.h"
@@ -124,7 +130,7 @@ static int pointer_x, pointer_y, pointer_inside, cursor_hidden;
 /* The pointer's place is a mouse's (it hovers): the mouse events SDL makes
  * of a touch move it only while the finger is down, and leave it where the
  * finger lifted, so they never reveal the bar by hovering. */
-#ifdef SDL_PLATFORM_ANDROID
+#ifdef MEMORIES_HANDHELD
 static int pointer_is_mouse;
 #else
 static int pointer_is_mouse = 1;
@@ -169,6 +175,11 @@ static float touch_density(void)
     float density = Android_Density();
     if (density <= 0.0f) density = display ? SDL_GetDisplayContentScale(display) : 0.0f;
     return density > 0.0f ? density : 1.0f;
+#elif defined(MEMORIES_IOS)
+    /* UIKit lays out in points, about a dp each; the window's pixel density
+     * is its pixels per point (2 or 3 on a phone). */
+    float density = window ? SDL_GetWindowPixelDensity(window) : 0.0f;
+    return density > 0.0f ? density : 2.0f;
 #else
     return 0.0f;
 #endif
@@ -273,7 +284,7 @@ static void resize_mods(int w, int h)
 }
 int HERE(Platform_OpenFolder)(const char *path)
 {
-#ifdef SDL_PLATFORM_ANDROID
+#ifdef MEMORIES_HANDHELD
     /* An app has no file manager window to open: SDL_OpenURL there takes a
      * URI for an activity, and a plain path opens nothing. */
     (void)path;
@@ -421,7 +432,7 @@ void HERE(Platform_OpenControls)(void)
 static int panel_paused, panel_clock_rate, panel_typing;
 static int panel_overlay(void)
 {
-#ifdef SDL_PLATFORM_ANDROID
+#ifdef MEMORIES_HANDHELD
     return 1;
 #else
     const char *wanted = getenv("MEMORIES_PANELS");
@@ -984,7 +995,7 @@ static void block_signals(sigset_t *previous)
 static void restore_signals(const sigset_t *previous) { pthread_sigmask(SIG_SETMASK, previous, NULL); }
 
 int Platform_Scale(void) { return scale; }
-#ifdef SDL_PLATFORM_ANDROID
+#ifdef MEMORIES_HANDHELD
 int Platform_HasWindowModes(void) { return 0; } /* the whole screen, always (android.c) */
 #else
 int Platform_HasWindowModes(void) { return 1; }
@@ -2443,7 +2454,7 @@ int Platform_Open(const char *title)
     }
     Menu_SetPresentPass(use_gl); /* present_pass.c: the desktop presenter's alone */
     Menu_Init();
-#ifdef SDL_PLATFORM_ANDROID
+#ifdef MEMORIES_HANDHELD
     /* One window, always the whole screen, no update check (android.c):
      * the window's size and mode and the update check are dimmed; Mods and
      * Controls open as panels inside the window. */
