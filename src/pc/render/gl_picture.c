@@ -33,7 +33,7 @@
 #include "pc/compat/signal.h"
 #include "pc/debug/log.h"
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_opengl.h>
+#include "pc/compat/sdl_opengl.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

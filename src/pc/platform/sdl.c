@@ -59,7 +59,7 @@
 #else
 #define HERE(name) name
 #endif
-#include <SDL3/SDL_opengl.h>
+#include "pc/compat/sdl_opengl.h"
 #include "pc/render/gl_picture.h"
 #include "pc/compat/signal.h"
 #include <stdio.h>
