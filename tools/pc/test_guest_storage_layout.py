@@ -108,6 +108,7 @@ def check_target_source_contract():
         "windows",
         "windows-x64",
         "macos",
+        "ios",
         "android-arm64-v8a",
         "android-x86",
     }
@@ -122,6 +123,16 @@ def check_target_source_contract():
         BUILD_TARGETS[name]["memory_model"] == "fixed-32" for name in fixed_targets
     )
     assert BUILD_TARGETS["macos"]["memory_model"] == "translated-32"
+    # iOS is the macOS ARM64 contract on another SDK: the same translated
+    # memory, ABI, assembly and native source selection.
+    assert BUILD_TARGETS["ios"]["memory_model"] == "translated-32"
+    assert all(
+        BUILD_TARGETS["ios"][key] == BUILD_TARGETS["macos"][key]
+        for key in ("architecture", "abi", "guest_assembly", "driver")
+    )
+    assert native_sources(BUILD_TARGETS["ios"], None) == native_sources(
+        BUILD_TARGETS["macos"], None
+    )
 
     for name in fixed_targets:
         sources = set(native_sources(BUILD_TARGETS[name], None))

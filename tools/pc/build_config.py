@@ -74,6 +74,19 @@ TARGETS = {
         "build": "tmp/pc/macos",
         "executable": "memories-arm64",
     },
+    # Port/eame: iOS shares macOS ARM64's Darwin ABI and translated guest
+    # memory (an iOS process cannot map the console's addresses either); only
+    # the SDK, the deployment baseline and the host platform layer differ.
+    "ios": {
+        "platform": "ios",
+        "architecture": "arm64",
+        "abi": "darwin-lp64",
+        "memory_model": "translated-32",
+        "guest_assembly": "translated-arm64",
+        "driver": "build_arm64.py",
+        "build": "tmp/pc/ios",
+        "executable": "memories-ios",
+    },
 }
 
 BACKENDS = {
@@ -111,6 +124,9 @@ COMMON_FILES = [
     "render/texture_dump.c",
     "render/texture_pack.c",
 ]
+# Where the system's OpenGL is OpenGL ES (iOS, as on Android), the desktop
+# presenter's fixed-function pass is replaced by its stand-in.
+IOS_BACKEND = {"src/pc/render/present_pass.c": "src/pc/render/gl_desktop_none.c"}
 FIXED_MEMORY = {
     "src/pc/guest/resolve.c",
     "src/pc/guest/image.c",

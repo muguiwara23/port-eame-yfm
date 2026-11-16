@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""macOS ARM64 driver for the common PC build.
+"""macOS ARM64 driver for the common PC build, and its iOS ARM64 target.
 
 The driver emits IR under tmp, compiles every resident and configured
 module unit, and links native SDK/platform services. Missing game functions use
@@ -24,6 +24,7 @@ from pathlib import Path
 
 from build_config import (
     GATED_MODULES,
+    IOS_BACKEND,
     MODULE_CONFIG,
     MODULES,
     TARGETS,
@@ -354,7 +355,7 @@ def compile_guest_units(jobs, ordinary, raw_text, pin_maps, path_for, cc, sdk, a
         return source, run_logged(
             [
                 cc,
-                *darwin_flags(sdk),
+                *darwin_flags(sdk, args.target),
                 "-O2" if args.optimize else "-O0",
                 "-fno-strict-aliasing",
                 "-c",
@@ -628,7 +629,8 @@ def link_game(
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--build", type=Path, default=ROOT / "tmp/pc/macos")
+    parser.add_argument("--target", choices=("macos", "ios"), default="macos")
+    parser.add_argument("--build", type=Path)
     parser.add_argument("--jobs", type=int, default=8)
     parser.add_argument("--compile-only", action="store_true")
     parser.add_argument(
@@ -643,19 +645,29 @@ def main():
         help="Enable O2 translated IR/native helpers and audited SoftGpu boundaries (default); frontend remains O0",
     )
     args = parser.parse_args()
+    target = TARGETS[args.target]
+    if args.build is None:
+        args.build = ROOT / target["build"]
+    if args.target == "ios" and not args.compile_only:
+        # Port/eame brings iOS up in stages; the app link is the next one.
+        raise SystemExit("The iOS target compiles only for now: pass --compile-only")
     llvm = toolchain()
     cc = str(llvm / "bin/clang")
-    from macos_deps import ensure, sdk_path
+    from macos_deps import IOS_NAMES, ensure, sdk_path
 
-    dependencies = ensure(jobs=args.jobs)
-    sdk = str(sdk_path())
+    if args.target == "ios":
+        dependencies = ensure(IOS_NAMES, jobs=args.jobs, platform_name="ios")
+    else:
+        dependencies = ensure(jobs=args.jobs)
+    sdk = str(sdk_path(args.target))
     build = args.build.resolve()
     for d in ["raw", "ir", "obj", "logs"]:
         (build / d).mkdir(parents=True, exist_ok=True)
     address_tables = maps()
     groups = game_sources()
-    target = TARGETS["macos"]
     natives = native_sources(target)
+    if args.target == "ios":
+        natives = sorted({IOS_BACKEND.get(source, source) for source in natives})
     required = {
         "src/pc/guest/translated_image_backend.c",
         "src/pc/guest/state_translated.c",
@@ -674,7 +686,7 @@ def main():
         ordinary.add("src/pc/compat/libgs_ot.c")
     # Local independent runtime helpers must never resolve their own accesses.
     flags = [
-        *guest_frontend_flags(sdk),
+        *guest_frontend_flags(sdk, args.target),
         "-fcommon",
         "-I" + str(dependencies / "include"),
         "-I" + str(dependencies / "include/freetype2"),

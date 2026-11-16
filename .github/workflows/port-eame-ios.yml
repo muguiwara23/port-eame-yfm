@@ -15,10 +15,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  ios-deps:
-    name: iOS static dependencies (macos-15)
+  ios-compile:
+    name: iOS dependencies and game objects (macos-15)
     runs-on: macos-15
-    timeout-minutes: 60
+    timeout-minutes: 90
     defaults:
       run:
         shell: bash
@@ -40,20 +40,39 @@ jobs:
           xcrun --sdk iphoneos --show-sdk-version
       - name: Build and check zlib, libpng, FreeType and SDL3 for iOS ARM64
         run: python tools/pc/build_ios_deps.py
-      - name: Record what was built
+      - name: Compile every game and native unit for iOS ARM64 (no link, no disc)
+        run: python tools/pc/build.py --target ios --compile-only
+      - name: Show why units failed
+        if: failure()
+        run: |
+          shopt -s nullglob
+          for log in tmp/pc/ios/logs/*.log; do
+            [ -s "$log" ] || continue
+            echo "::group::$(basename "$log")"
+            head -n 40 "$log"
+            echo "::endgroup::"
+          done
+      - name: Check the compiled objects are iOS ARM64
+        run: |
+          count=0
+          for object in tmp/pc/ios/obj/*.o; do
+            count=$((count + 1))
+            xcrun otool -l "$object" | awk '/LC_BUILD_VERSION/{f=1} f&&/platform/{print $2; f=0}'
+          done | sort | uniq -c
+          echo "objects: $(ls tmp/pc/ios/obj/*.o | wc -l)"
+          cat tmp/pc/ios/summary.json | python3 -c "import json,sys; d=json.load(sys.stdin); print('units', d['units'], 'failures', len(d['failures']))"
+      - name: Collect logs
         if: always()
         run: |
           mkdir -p tmp/port-eame-report
           ls -l tmp/pc/ios-deps/install/lib > tmp/port-eame-report/libraries.txt 2>&1 || true
-          find tmp/pc/ios-deps/build -name CMakeCache.txt -maxdepth 2 \
-            -exec grep -H -E '^CMAKE_(SYSTEM_NAME|OSX_SYSROOT|OSX_DEPLOYMENT_TARGET|C_COMPILER):' {} + \
-            > tmp/port-eame-report/cmake.txt 2>&1 || true
-          find tmp/pc/ios-deps/build -name CMakeConfigureLog.yaml -maxdepth 3 \
-            -exec sh -c 'mkdir -p "tmp/port-eame-report/$(basename "$(dirname "$(dirname "$1")")")" && cp "$1" "tmp/port-eame-report/$(basename "$(dirname "$(dirname "$1")")")/"' _ {} \; || true
+          cp tmp/pc/ios/summary.json tmp/port-eame-report/ 2>/dev/null || true
+          mkdir -p tmp/port-eame-report/logs
+          find tmp/pc/ios/logs -name '*.log' -size +0 -exec cp {} tmp/port-eame-report/logs/ \; 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: port-eame-ios-deps-report
+          name: port-eame-ios-report
           path: tmp/port-eame-report
           if-no-files-found: warn
           retention-days: 14

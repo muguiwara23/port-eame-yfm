@@ -1,6 +1,6 @@
 """Shared guest address tables and Darwin compiler flags for games and mods."""
 
-from build_config import MACOS_MINIMUM, ROOT
+from build_config import IOS_MINIMUM, MACOS_MINIMUM, ROOT
 
 HOST_LIBC = {
     "printf",
@@ -65,14 +65,17 @@ def maps():
     return result
 
 
-def darwin_flags(sdk):
+def darwin_flags(sdk, platform_name="macos"):
+    if platform_name == "ios":
+        # The pinned LLVM defaults to its macOS host; name the iOS target.
+        return ["-target", f"arm64-apple-ios{IOS_MINIMUM}", "-isysroot", str(sdk)]
     return ["-isysroot", str(sdk), f"-mmacosx-version-min={MACOS_MINIMUM}"]
 
 
-def guest_frontend_flags(sdk):
+def guest_frontend_flags(sdk, platform_name="macos"):
     """Preserve the PS1 layout until structured guest-memory lowering."""
     return [
-        *darwin_flags(sdk),
+        *darwin_flags(sdk, platform_name),
         "-std=gnu11",
         "-fms-extensions",
         "-O0",
