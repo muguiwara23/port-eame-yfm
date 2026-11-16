@@ -569,12 +569,14 @@ def ios_link_inputs(dependencies):
     """The system libraries an iOS link needs: what the static SDL3 built for
     this SDK records in its own pkg-config file, and the game's own."""
     text = (dependencies / "lib/pkgconfig/sdl3.pc").read_text()
-    private = next(
-        line.split(":", 1)[1]
+    # A static SDL3 lists them under Libs, a shared one under Libs.private.
+    words = [
+        word
         for line in text.splitlines()
-        if line.startswith("Libs.private:")
-    )
-    words, result = private.split(), []
+        if line.startswith(("Libs:", "Libs.private:"))
+        for word in line.split(":", 1)[1].split()
+    ]
+    result = []
     for index, word in enumerate(words):
         if word in ("-framework", "-weak_framework") and index + 1 < len(words):
             result += [word, words[index + 1]]
@@ -582,8 +584,11 @@ def ios_link_inputs(dependencies):
             result.append(word)
         elif word.startswith("-l") and word not in ("-lSDL3", "-lm"):
             result.append(word)
+    if not any("UIKit" in word for word in result):
+        raise SystemExit("sdl3.pc lists no iOS frameworks: " + " ".join(words))
+    named = " ".join(result)
     for framework in ("CoreText", "CoreGraphics", "Foundation", "UIKit", "OpenGLES"):
-        if framework not in words:
+        if framework not in named:
             result += ["-framework", framework]
     return result
 
