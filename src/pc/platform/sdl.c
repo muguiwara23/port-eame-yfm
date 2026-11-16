@@ -185,6 +185,47 @@ static float touch_density(void)
 #endif
 }
 
+/* The window's size in the units everything here is laid out in. An Android
+ * window's are pixels, and the touch layout's densities, the integer picture
+ * scale and the overlay's sharpness all count on that. UIKit's are points
+ * (a third of a pixel on a phone), so on iOS the layout takes the pixels and
+ * what UIKit reports in points is converted on its way in. */
+static bool layout_window_size(int *w, int *h)
+{
+#ifdef MEMORIES_IOS
+    return SDL_GetWindowSizeInPixels(window, w, h);
+#else
+    return SDL_GetWindowSize(window, w, h);
+#endif
+}
+#ifdef MEMORIES_IOS
+static float points_to_pixels(void)
+{
+    float density = window ? SDL_GetWindowPixelDensity(window) : 0.0f;
+    return density > 0.0f ? density : 1.0f;
+}
+/* A pointer event (a Bluetooth mouse, or the mouse SDL makes of a touch). */
+static void pointer_to_pixels(SDL_Event *event)
+{
+    float scale = points_to_pixels();
+    switch (event->type) {
+    case SDL_EVENT_MOUSE_MOTION:
+        event->motion.x *= scale; event->motion.y *= scale;
+        event->motion.xrel *= scale; event->motion.yrel *= scale;
+        break;
+    case SDL_EVENT_MOUSE_BUTTON_DOWN:
+    case SDL_EVENT_MOUSE_BUTTON_UP:
+        event->button.x *= scale; event->button.y *= scale;
+        break;
+    case SDL_EVENT_MOUSE_WHEEL:
+        event->wheel.mouse_x *= scale; event->wheel.mouse_y *= scale;
+        break;
+    default:
+        break;
+    }
+}
+#endif
+
 /* The menu's size: the setting, or from the height the window has or is
  * about to have. */
 static void update_menu_scale(int window_h)
@@ -448,6 +489,11 @@ static void layout_panel(void)
     SDL_Rect safe;
     static SDL_Rect logged;
     if (window && SDL_GetWindowSafeArea(window, &safe)) {
+#ifdef MEMORIES_IOS
+        float scale = points_to_pixels();
+        safe.x = (int)((float)safe.x * scale); safe.y = (int)((float)safe.y * scale);
+        safe.w = (int)((float)safe.w * scale); safe.h = (int)((float)safe.h * scale);
+#endif
         if (memcmp(&safe, &logged, sizeof(safe))) {
             logged = safe;
             LOG(LOG_WINDOW, "panel: safe area %d,%d %dx%d of %dx%d", safe.x, safe.y, safe.w, safe.h, layout.win_w,
@@ -1186,7 +1232,7 @@ static void relayout(void)
     int ph = logical_h, area_h, mode = Settings_Get(SET_SCALING);
     float factor;
     if ((!renderer && !use_gl) || picture_w <= 0 || picture_h <= 0 ||
-        !SDL_GetWindowSize(window, &window_w, &window_h) ||
+        !layout_window_size(&window_w, &window_h) ||
         !(use_gl ? SDL_GetWindowSizeInPixels(window, &output_w, &output_h) :
                     SDL_GetRenderOutputSize(renderer, &output_w, &output_h)) ||
         window_w <= 0 || window_h <= 0) {
@@ -1867,6 +1913,9 @@ static void pump(void)
     }
     while (SDL_PollEvent(&event)) {
         MenuEvent menu_event;
+#ifdef MEMORIES_IOS
+        pointer_to_pixels(&event);
+#endif
         translate(&event, &menu_event);
         if(event.type==SDL_EVENT_KEYMAP_CHANGED){controls_key_labels();continue;}
         if (event.type == SDL_EVENT_FINGER_DOWN || event.type == SDL_EVENT_FINGER_MOTION ||

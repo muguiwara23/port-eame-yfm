@@ -24,6 +24,26 @@ int Platform_GuestMemoryHelp(char *why, size_t size)
     return 0;
 }
 
+/* Documents/environment.txt, NAME=value lines: the settings a desktop takes
+ * from its environment (MEMORIES_GL_PICTURE=0, MEMORIES_TRACE=...), for a
+ * player trying something on a device that has no shell. As android.c's. */
+static void read_environment(const char *documents)
+{
+    char path[1024], line[600];
+    FILE *file;
+    snprintf(path, sizeof(path), "%s/environment.txt", documents);
+    if (!(file = fopen(path, "r"))) return;
+    while (fgets(line, sizeof(line), file)) {
+        char *equals;
+        line[strcspn(line, "\r\n")] = '\0';
+        if (line[0] == '#' || !(equals = strchr(line, '=')) || equals == line) continue;
+        *equals = '\0';
+        setenv(line, equals + 1, 1);
+        fprintf(stderr, "Port/eame iOS: environment.txt sets %s\n", line);
+    }
+    fclose(file);
+}
+
 void Ios_Startup(void)
 {
     const char *home = getenv("HOME");
@@ -49,5 +69,12 @@ void Ios_Startup(void)
     fprintf(stderr, "Port/eame iOS: started %s", ctime(&now));
     fprintf(stderr, "Port/eame iOS: documents %s\n", documents);
     if (getcwd(path, sizeof(path))) fprintf(stderr, "Port/eame iOS: bundle %s\n", path);
+    read_environment(documents);
+    /* As android.c starts the game: the whole screen (the menu bar stays
+     * hidden until MENU is tapped, and the touch controls show), and no
+     * update check, since an app is not updated by a download. */
+    setenv("MEMORIES_FULLSCREEN", "1", 0);
+    setenv("MEMORIES_NO_MONITOR", "1", 0);
+    setenv("MEMORIES_NO_UPDATE_CHECK", "1", 0);
 }
 #endif
