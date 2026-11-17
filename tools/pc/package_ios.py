@@ -126,12 +126,15 @@ def stage_icon(app, icon, info):
     catalog = work / "Assets.xcassets"
     appicon = catalog / "AppIcon.appiconset"
     appicon.mkdir(parents=True)
-    # An app icon has no transparency: flatten to RGB PNG at 1024 x 1024.
-    subprocess.run(
-        ["sips", "-s", "format", "png", "-s", "hasAlpha", "no", "-z", "1024", "1024",
-         str(icon), "--out", str(appicon / "icon.png")],
-        check=True, stdout=subprocess.DEVNULL,
-    )
+    # A 1024 x 1024 PNG (the private icon is one already, RGB with no
+    # transparency); sips only resizes or converts what is not.
+    picture = appicon / "icon.png"
+    shutil.copyfile(icon, picture)
+    if icon.suffix.lower() != ".png" or icon.read_bytes()[16:24] != (1024).to_bytes(4, "big") * 2:
+        subprocess.run(
+            ["sips", "-s", "format", "png", "-z", "1024", "1024", str(icon), "--out", str(picture)],
+            check=True, stdout=subprocess.DEVNULL,
+        )
     (catalog / "Contents.json").write_text('{"info":{"author":"xcode","version":1}}')
     (appicon / "Contents.json").write_text(json.dumps({
         "images": [{"filename": "icon.png", "idiom": "universal", "platform": "ios", "size": "1024x1024"}],
