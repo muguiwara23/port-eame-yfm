@@ -6,6 +6,11 @@ name: Port/eame iOS
 # nothing, so one build at a time has the macOS runner.
 on:
   workflow_dispatch:
+    inputs:
+      icon:
+        description: "Put Arturo's icon in the app"
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -78,7 +83,9 @@ jobs:
           PORTEAME_ICON_KEY: ${{ secrets.PORTEAME_ICON_KEY }}
         run: |
           icon=()
-          if [ -n "$PORTEAME_ICON_KEY" ]; then
+          if [ "${{ inputs.icon }}" = "false" ]; then
+            echo "Icon turned off for this build"
+          elif [ -n "$PORTEAME_ICON_KEY" ]; then
             python tools/pc/port_eame_private.py decrypt ios/private/app-icon.png.enc "$RUNNER_TEMP/app-icon.png" "$PORTEAME_ICON_KEY"
             icon=(--icon "$RUNNER_TEMP/app-icon.png")
           else
