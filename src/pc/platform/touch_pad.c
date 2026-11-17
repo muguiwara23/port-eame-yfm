@@ -30,6 +30,8 @@ static Finger fingers[FINGERS];
 static uint16_t held, tapped, presses;
 static int menu_down, menu_taps;
 
+static void lay_out(void);
+
 uint16_t TouchPad_Bit(TouchButton button) { return button < TOUCH_BUTTONS ? bits_of[button] : 0; }
 
 int TouchPad_Shown(void)
@@ -53,6 +55,71 @@ static void place(TouchButton button, int x, int y, int w, int h)
  * picture leaves black bars on a phone), the shoulders above them, SELECT
  * and START below; MENU under L2/L1, the D-pad's reach (two buttons from
  * its middle) starting below MENU's. */
+#ifdef MEMORIES_IOS
+/* Port/eame: the iPhone's cutouts and rounded corners (the window's safe
+ * area insets, TouchPad_SetInsets). */
+static int inset_left, inset_right, inset_bottom;
+
+int TouchPad_SetInsets(int left, int right, int bottom)
+{
+    if (left == inset_left && right == inset_right && bottom == inset_bottom) return 0;
+    inset_left = left;
+    inset_right = right;
+    inset_bottom = bottom;
+    if (width > 0 && height > 0) lay_out();
+    return TouchPad_Shown();
+}
+
+/* Port/eame's iOS layout (touch_pad_art_ios.c draws it): the D-pad and the
+ * face buttons as on the other platforms, but kept clear of the notch; the
+ * shoulders as pills in the top corners, L2 L1 and R1 R2; MENU a pill under
+ * L2/L1; SELECT and START pills under the D-pad and the face buttons. */
+static void lay_out_ios(int s, int m)
+{
+    int left = m, right = m, pill_w, pill_h, gap, y0, menu_y, bottom, low, bar, fit;
+    if (inset_left * 2 / 3 > left) left = inset_left * 2 / 3;
+    if (inset_right * 2 / 3 > right) right = inset_right * 2 / 3;
+    /* On a phone the D-pad and the face buttons keep to the black bars the
+     * 4:3 picture leaves (each about 2.9 buttons wide as drawn), down to
+     * Apple's 44 pt target; a tablet's picture fills the screen and they go
+     * over it. */
+    bar = (width - (height - top) * 4 / 3) / 2;
+    fit = (bar - (left > right ? left : right)) * 100 / 290;
+    if (fit < s && fit >= (int)(44 * (density > 0 ? density : 1) + 0.5f)) {
+        s = fit;
+        m = s * 35 / 100;
+    }
+    pill_w = s * 6 / 5;
+    pill_h = s * 11 / 20;
+    gap = s / 6;
+    unit = s;
+    /* The middles one button and a half (the cross's arm as drawn: 1.3) in. */
+    dpad_x = left + s * 13 / 10;
+    face_x = width - right - s * 14 / 10;
+    y0 = top + m / 2;
+    place(TOUCH_L2, left, y0, pill_w, pill_h);
+    place(TOUCH_L1, left + pill_w + gap, y0, pill_w, pill_h);
+    place(TOUCH_R1, width - right - 2 * pill_w - gap, y0, pill_w, pill_h);
+    place(TOUCH_R2, width - right - pill_w, y0, pill_w, pill_h);
+    menu_y = y0 + pill_h + gap;
+    place(TOUCH_MENU, left, menu_y, pill_w * 5 / 4, pill_h * 9 / 10);
+    dpad_y = face_y = top + (height - top) * 56 / 100;
+    if (dpad_y - s * 3 / 2 < menu_y + pill_h + gap) dpad_y = face_y = menu_y + pill_h + gap + s * 3 / 2;
+    place(TOUCH_UP, dpad_x - s / 2, dpad_y - s * 3 / 2, s, s);
+    place(TOUCH_DOWN, dpad_x - s / 2, dpad_y + s / 2, s, s);
+    place(TOUCH_LEFT, dpad_x - s * 3 / 2, dpad_y - s / 2, s, s);
+    place(TOUCH_RIGHT, dpad_x + s / 2, dpad_y - s / 2, s, s);
+    place(TOUCH_TRIANGLE, face_x - s / 2, face_y - s * 3 / 2, s, s);
+    place(TOUCH_CROSS, face_x - s / 2, face_y + s / 2, s, s);
+    place(TOUCH_SQUARE, face_x - s * 3 / 2, face_y - s / 2, s, s);
+    place(TOUCH_CIRCLE, face_x + s / 2, face_y - s / 2, s, s);
+    low = inset_bottom / 2 > m / 2 ? inset_bottom / 2 : m / 2;
+    bottom = height - low;
+    place(TOUCH_SELECT, dpad_x - s * 3 / 4, bottom - pill_h, s * 3 / 2, pill_h);
+    place(TOUCH_START, face_x - s * 3 / 4, bottom - pill_h, s * 3 / 2, pill_h);
+}
+#endif
+
 static void lay_out(void)
 {
     int shorter = width < height ? width : height, s = shorter * 13 / 100, m, bottom, menu_y;
@@ -63,6 +130,10 @@ static void lay_out(void)
         if (s > shorter * 16 / 100) s = shorter * 16 / 100;
     }
     m = s * 35 / 100;
+#ifdef MEMORIES_IOS
+    lay_out_ios(s, m);
+    return;
+#endif
     unit = s;
     dpad_x = m + s * 3 / 2;
     face_x = width - m - s * 3 / 2;

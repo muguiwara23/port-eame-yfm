@@ -1244,6 +1244,17 @@ static void relayout(void)
     if (area_h < 1) area_h = 1;
     layout.win_w = window_w;
     layout.win_h = window_h;
+#ifdef MEMORIES_IOS
+    { /* Port/eame: the touch controls keep clear of the notch and corners. */
+        SDL_Rect safe;
+        if (window && SDL_GetWindowSafeArea(window, &safe)) {
+            float scale = points_to_pixels();
+            int left = (int)((float)safe.x * scale), right = window_w - (int)((float)(safe.x + safe.w) * scale),
+                bottom = window_h - (int)((float)(safe.y + safe.h) * scale);
+            if (TouchPad_SetInsets(left, right > 0 ? right : 0, bottom > 0 ? bottom : 0)) menu_dirty = 1;
+        }
+    }
+#endif
     if (TouchPad_Layout(window_w, window_h, menu)) menu_dirty = 1;
     if (Panel_Shown()) layout_panel();
     layout.pixel_x = (float)output_w / (float)window_w;

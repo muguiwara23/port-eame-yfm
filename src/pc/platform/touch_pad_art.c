@@ -1,4 +1,6 @@
 /* The on-screen controller's pictures (touch_pad_art.h). */
+/* Port/eame: iOS draws its own (touch_pad_art_ios.c). */
+#ifndef MEMORIES_IOS
 #include "touch_pad_art.h"
 #include "touch_pad.h"
 #include "pc/cards/disc_art.h"
@@ -179,3 +181,4 @@ void TouchPadArt_Draw(MenuCanvas *canvas, int *x, int *y, int *w, int *h)
     *w = x1 - x0;
     *h = y1 - y0;
 }
+#endif

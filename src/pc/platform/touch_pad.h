@@ -40,6 +40,12 @@ int TouchPad_SetDensity(float pixels_per_dp);
  * takes no touch, so their rows and buttons are the finger's, and what it
  * held is let go. 1 when that changed what is shown. */
 int TouchPad_Block(int blocked);
+#ifdef MEMORIES_IOS
+/* Port/eame: how far in from the left, right and bottom edges the screen is
+ * clear of cutouts and rounded corners, in window pixels (the safe area). 1
+ * when that changed what is shown. */
+int TouchPad_SetInsets(int left, int right, int bottom);
+#endif
 /* MENU was tapped since the last call. */
 int TouchPad_TakeMenu(void);
 /* The span across the window between the pad's left and right columns, for
