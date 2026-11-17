@@ -1,7 +1,11 @@
 name: Native PC foundation
 on:
+  # Port/eame: on the port-eame branches Arturo runs it by hand (Actions >
+  # Run workflow), so it does not take the macOS runner from the iOS build.
   push:
+    branches-ignore: ['port-eame/**']
   pull_request:
+  workflow_dispatch:
 jobs:
   core-linux:
     runs-on: ubuntu-latest

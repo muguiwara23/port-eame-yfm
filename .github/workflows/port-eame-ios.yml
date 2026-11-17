@@ -2,9 +2,9 @@ name: Port/eame iOS
 
 # Port/eame: the iOS ARM64 build, brought up one stage at a time on the
 # port-eame/ios branch. No disc, no secrets and no signing identity are used.
+# Run by hand only (Actions > Port/eame iOS > Run workflow): a push builds
+# nothing, so one build at a time has the macOS runner.
 on:
-  push:
-    branches: ['port-eame/**']
   workflow_dispatch:
 
 permissions:
