@@ -72,8 +72,19 @@ jobs:
           echo "linked libraries and frameworks:"
           xcrun otool -L "$binary" | tail -n +2
       - name: Package the unsigned IPA (no disc data, no signing identity)
+        env:
+          # Arturo's own icon, kept in the repository only encrypted; without
+          # the secret the app simply has no icon.
+          PORTEAME_ICON_KEY: ${{ secrets.PORTEAME_ICON_KEY }}
         run: |
-          python tools/pc/package_ios.py --version "0.3.0-ios-dev.${{ github.run_number }}"
+          icon=()
+          if [ -n "$PORTEAME_ICON_KEY" ]; then
+            python tools/pc/port_eame_private.py decrypt ios/private/app-icon.png.enc "$RUNNER_TEMP/app-icon.png" "$PORTEAME_ICON_KEY"
+            icon=(--icon "$RUNNER_TEMP/app-icon.png")
+          else
+            echo "No PORTEAME_ICON_KEY secret: no app icon"
+          fi
+          python tools/pc/package_ios.py --version "0.3.0-ios-dev.${{ github.run_number }}" "${icon[@]}"
           unzip -l tmp/pc-release/ios/*.ipa
           for library in "tmp/pc-release/ios/stage/Payload/YFM Re-Decomp.app"/mods/*/*.dylib; do
             echo "== $library"

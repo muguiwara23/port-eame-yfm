@@ -117,6 +117,48 @@ def stage_mods(app, game):
     return files, libraries
 
 
+def stage_icon(app, icon, info):
+    """The app's icon from one square picture: actool makes the asset
+    catalog and the sizes iPhone and iPad want (Info.plist's CFBundleIcons);
+    without actool, sips makes the sizes and the plist names them."""
+    work = app.parent.parent / "icon-work"
+    shutil.rmtree(work, ignore_errors=True)
+    catalog = work / "Assets.xcassets"
+    appicon = catalog / "AppIcon.appiconset"
+    appicon.mkdir(parents=True)
+    # An app icon has no transparency: flatten to RGB PNG at 1024 x 1024.
+    subprocess.run(
+        ["sips", "-s", "format", "png", "-s", "hasAlpha", "no", "-z", "1024", "1024",
+         str(icon), "--out", str(appicon / "icon.png")],
+        check=True, stdout=subprocess.DEVNULL,
+    )
+    (catalog / "Contents.json").write_text('{"info":{"author":"xcode","version":1}}')
+    (appicon / "Contents.json").write_text(json.dumps({
+        "images": [{"filename": "icon.png", "idiom": "universal", "platform": "ios", "size": "1024x1024"}],
+        "info": {"author": "xcode", "version": 1},
+    }))
+    partial = work / "partial.plist"
+    made = subprocess.run(
+        ["xcrun", "actool", str(catalog), "--compile", str(app), "--platform", "iphoneos",
+         "--minimum-deployment-target", IOS_MINIMUM, "--app-icon", "AppIcon",
+         "--target-device", "iphone", "--target-device", "ipad",
+         "--output-partial-info-plist", str(partial), "--output-format", "human-readable-text"],
+        check=False,
+    )
+    if made.returncode == 0 and partial.is_file():
+        info.update(plistlib.loads(partial.read_bytes()))
+        print("icon: asset catalog by actool:", sorted(p.name for p in app.glob("AppIcon*")) + (["Assets.car"] if (app / "Assets.car").is_file() else []))
+        return
+    print("icon: actool failed; plain PNG icons")
+    sizes = {"AppIcon60x60@2x.png": 120, "AppIcon60x60@3x.png": 180,
+             "AppIcon76x76@2x~ipad.png": 152, "AppIcon83.5x83.5@2x~ipad.png": 167}
+    for name, size in sizes.items():
+        subprocess.run(["sips", "-z", str(size), str(size), str(appicon / "icon.png"), "--out", str(app / name)],
+                       check=True, stdout=subprocess.DEVNULL)
+    info["CFBundleIcons"] = {"CFBundlePrimaryIcon": {"CFBundleIconFiles": ["AppIcon60x60"]}}
+    info["CFBundleIcons~ipad"] = {"CFBundlePrimaryIcon": {"CFBundleIconFiles": ["AppIcon60x60", "AppIcon76x76", "AppIcon83.5x83.5"]}}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("--binary", type=Path, default=ROOT / "tmp/pc/ios" / EXECUTABLE)
@@ -129,6 +171,7 @@ def main():
         default=True,
         help="Stage the repository's mods and build their iOS dylibs (default)",
     )
+    parser.add_argument("--icon", type=Path, help="A square picture for the app's icon (kept out of the repository)")
     options = parser.parse_args()
     binary = options.binary.resolve()
     if not binary.is_file():
@@ -179,6 +222,8 @@ def main():
     info = info_plist(
         release.group(1) if release else "0.0.0", build_number, options.bundle_id
     )
+    if options.icon:
+        stage_icon(app, options.icon.resolve(), info)
     (app / "Info.plist").write_bytes(plistlib.dumps(info, fmt=plistlib.FMT_BINARY))
 
     archive = options.out.resolve() / f"yfm-redecomp-{options.version}-ios-arm64-unsigned.ipa"
