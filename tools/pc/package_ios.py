@@ -121,7 +121,8 @@ def stage_icon(app, icon, info):
     """The app's icon from one square picture: actool makes the asset
     catalog and the sizes iPhone and iPad want (Info.plist's CFBundleIcons);
     without actool, sips makes the sizes and the plist names them."""
-    work = app.parent.parent / "icon-work"
+    # Beside the stage, not in it: only Payload/<app> goes into the .ipa.
+    work = app.parent.parent.parent / "icon-work"
     shutil.rmtree(work, ignore_errors=True)
     catalog = work / "Assets.xcassets"
     appicon = catalog / "AppIcon.appiconset"
