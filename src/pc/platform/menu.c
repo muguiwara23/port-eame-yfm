@@ -61,11 +61,7 @@ static int ui = 1, touch_row;
 #define ITEM_PAD (12 * ui)   /* dropdown edge to the mark column */
 #define MARK_W (22 * ui)     /* the check or radio column */
 #define SHORTCUT_GAP (28 * ui)
-#ifdef MEMORIES_IOS
-#define DROP_PAD (6 * ui)    /* dropdown border to the first item */
-#else
 #define DROP_PAD (4 * ui)    /* dropdown border to the first item */
-#endif
 #define SEP_H (9 * ui)
 #define SLIDER_W (160 * ui)
 #define SLIDER_H (4 * ui)
@@ -74,7 +70,6 @@ static int ui = 1, touch_row;
 #define FONT_PX (13 * ui)
 
 /* Colors: a dark bar that stays out of the picture's way. */
-#ifndef MEMORIES_IOS
 #define C_BAR 0x1e1f22u
 #define C_BAR_EDGE 0x0b0b0dU
 #define C_BAR_HOVER 0x33353aU
@@ -89,48 +84,6 @@ static int ui = 1, touch_row;
 #define C_KNOB 0xf2f2f4u
 #define C_KNOB_EDGE 0x1e1f22u
 #define C_MARK 0x9a9ca3u
-#define C_ROW_HOT C_ACCENT          /* a highlighted row */
-#define C_ON_ROW_HOT C_TEXT_ON_ACCENT
-#define C_SLIDER_HOT C_TEXT_ON_ACCENT /* a slider's fill on a highlighted row */
-#define BAR_ALPHA 255
-#define BAR_START 0                 /* where the first bar label's box starts */
-#define PILL_INSET 0                /* an open bar label's box, in from the bar's edges */
-#define BAR_R 0                     /* corner radii (Port/eame's iOS look rounds them) */
-#define DROP_R 0
-#define ROW_R 0
-#define ROW_INSET (3 * ui)
-#define NOTICE_R 0
-#define DROP_GAP 0                  /* bar to dropdown */
-#else
-/* Port/eame's iOS look: Apple's dark system colours, a see-through bar,
- * rounded panels and rows, the system blue for what is on. */
-#define C_BAR 0x161618u
-#define C_BAR_EDGE 0x38383aU
-#define C_BAR_HOVER 0x2c2c2eU
-#define C_ACCENT 0x0a84ffu
-#define C_TEXT 0xf2f2f7
-#define C_TEXT_DIM 0x8e8e93
-#define C_TEXT_ON_ACCENT 0xffffffu
-#define C_DROP 0x1c1c1eU
-#define C_DROP_EDGE 0x3a3a3cu
-#define C_SEP 0x38383au
-#define C_TRACK 0x3a3a3cu
-#define C_KNOB 0xffffffu
-#define C_KNOB_EDGE 0x0b0b0du
-#define C_MARK 0x636366u
-#define C_ROW_HOT 0x3a3a3cu
-#define C_ON_ROW_HOT C_TEXT
-#define C_SLIDER_HOT C_ACCENT
-#define BAR_ALPHA 232
-#define BAR_START (16 * ui)
-#define PILL_INSET (5 * ui)
-#define BAR_R (8 * ui)
-#define DROP_R (13 * ui)
-#define ROW_R (8 * ui)
-#define ROW_INSET (6 * ui)
-#define NOTICE_R (14 * ui)
-#define DROP_GAP (6 * ui)
-#endif
 
 /* ITEM_SUBMENU opens submenus[value] beside its row; one level deep. An
  * ITEM_SLIDER's value is how far a key or wheel step moves it (0: 5). */
@@ -710,88 +663,6 @@ static void disc(int cx, int cy, int radius, uint32_t color)
     }
 }
 
-/* Rounded panels (Port/eame's iOS look; elsewhere radius is 0 and these
- * are fill and outline). Edge pixels are blended by how much of each the
- * corner's circle covers. */
-static void round_fill(int x, int y, int w, int h, int r, uint32_t color, unsigned alpha)
-{
-    int i, j;
-    if (r * 2 > h) r = h / 2;
-    if (r * 2 > w) r = w / 2;
-    if (r <= 0) {
-        fill(x, y, w, h, color, alpha);
-        return;
-    }
-    fill(x, y + r, w, h - 2 * r, color, alpha);
-    for (j = 0; j < r; j++) {
-        float cy = (float)r - ((float)j + 0.5f);
-        int inner = r - (int)__builtin_sqrtf((float)r * (float)r - cy * cy);
-        fill(x + inner + 1, y + j, w - 2 * inner - 2, 1, color, alpha);
-        fill(x + inner + 1, y + h - 1 - j, w - 2 * inner - 2, 1, color, alpha);
-        for (i = 0; i <= inner && i < r; i++) {
-            float cx = (float)r - ((float)i + 0.5f), d = __builtin_sqrtf(cx * cx + cy * cy) - (float)r;
-            float cover = d <= -0.5f ? 1.0f : d >= 0.5f ? 0.0f : 0.5f - d;
-            unsigned a = (unsigned)((float)alpha * cover + 0.5f);
-            if (!a) continue;
-            put(x + i, y + j, color, a);
-            put(x + w - 1 - i, y + j, color, a);
-            put(x + i, y + h - 1 - j, color, a);
-            put(x + w - 1 - i, y + h - 1 - j, color, a);
-        }
-    }
-}
-
-static void round_outline(int x, int y, int w, int h, int r, uint32_t color)
-{
-    int i, j;
-    if (r * 2 > h) r = h / 2;
-    if (r * 2 > w) r = w / 2;
-    if (r <= 0) {
-        outline(x, y, w, h, color);
-        return;
-    }
-    fill(x + r, y, w - 2 * r, 1, color, 255);
-    fill(x + r, y + h - 1, w - 2 * r, 1, color, 255);
-    fill(x, y + r, 1, h - 2 * r, color, 255);
-    fill(x + w - 1, y + r, 1, h - 2 * r, color, 255);
-    for (j = 0; j < r; j++) {
-        for (i = 0; i < r; i++) {
-            float cx = (float)r - ((float)i + 0.5f), cy = (float)r - ((float)j + 0.5f);
-            float d = __builtin_sqrtf(cx * cx + cy * cy) - (float)r; /* a 1-pixel band inside the edge */
-            float cover = d + 1.5f < 0.5f - d ? d + 1.5f : 0.5f - d;
-            unsigned a;
-            if (cover > 1.0f) cover = 1.0f;
-            if (cover <= 0.0f) continue;
-            a = (unsigned)(255.0f * cover + 0.5f);
-            put(x + i, y + j, color, a);
-            put(x + w - 1 - i, y + j, color, a);
-            put(x + i, y + h - 1 - j, color, a);
-            put(x + w - 1 - i, y + h - 1 - j, color, a);
-        }
-    }
-}
-
-#ifdef MEMORIES_IOS
-/* An anti-aliased stroke from a to b, `width` wide with round ends. */
-static void stroke(float ax, float ay, float bx, float by, float width, uint32_t color)
-{
-    int x0 = (int)((ax < bx ? ax : bx) - width), x1 = (int)((ax > bx ? ax : bx) + width) + 1;
-    int y0 = (int)((ay < by ? ay : by) - width), y1 = (int)((ay > by ? ay : by) + width) + 1, x, y;
-    float vx = bx - ax, vy = by - ay, length = vx * vx + vy * vy;
-    for (y = y0; y <= y1; y++)
-        for (x = x0; x <= x1; x++) {
-            float px = (float)x + 0.5f - ax, py = (float)y + 0.5f - ay, t = length > 0 ? (px * vx + py * vy) / length : 0;
-            float dx, dy, d;
-            if (t < 0) t = 0;
-            if (t > 1) t = 1;
-            dx = px - vx * t;
-            dy = py - vy * t;
-            d = __builtin_sqrtf(dx * dx + dy * dy) - width * 0.5f;
-            if (d < 0.5f) put(x, y, color, d <= -0.5f ? 255u : (unsigned)((0.5f - d) * 255.0f));
-        }
-}
-#endif
-
 static void draw_bitmap_text(int x, int middle, const char *text, uint32_t color)
 {
     for (; *text; x += 12 * ui) {
@@ -963,7 +834,7 @@ int Menu_Height(void) { return MENU_H; }
 
 static void layout_bar(void)
 {
-    int i, at = BAR_START;
+    int i, at = 0;
     for (i = 0; i < MENU_COUNT; i++) {
         menus[i].w = text_width(menus[i].label) + BAR_PAD * 2;
         menus[i].x = at;
@@ -1229,7 +1100,7 @@ static void drop_box(int level, int *x, int *y, int *w, int *h, int *full)
     *h = *full = height;
     if (level == 0) {
         *x = menu->x;
-        *y = MENU_H + DROP_GAP;
+        *y = MENU_H;
         if (*w < menu->w) {
             *w = menu->w;
         }
@@ -1388,13 +1259,6 @@ static void slider_geometry(int level, int index, int *sx, int *middle)
 /* A small triangle pointing right, for rows that open a submenu. */
 static void draw_arrow(int x, int middle, uint32_t color)
 {
-#ifdef MEMORIES_IOS
-    /* A chevron, as iOS shows a row that opens more. */
-    float s = 3.5f * (float)ui, w = 1.6f * (float)ui;
-    stroke((float)x, (float)middle - s, (float)x + s, (float)middle, w, color);
-    stroke((float)x + s, (float)middle, (float)x, (float)middle + s, w, color);
-    return;
-#endif
     int span = 4 * ui, c;
     for (c = 0; c < span; c++) {
         int half = (span - c) * 7 * ui / (2 * span);
@@ -1418,20 +1282,6 @@ static void draw_band_arrow(int cx, int middle, int direction, uint32_t color)
 static void draw_check(int x, int middle, int checked)
 {
     int size = 14 * ui, top = middle - size / 2;
-#ifdef MEMORIES_IOS
-    /* A rounded box: on, filled blue with a white tick. */
-    if (checked) {
-        float u = (float)ui, left = (float)x, upper = (float)top;
-        round_fill(x, top, size, size, 4 * ui, C_ACCENT, 255);
-        stroke(left + 3.5f * u, upper + 7.2f * u, left + 6.0f * u, upper + 9.8f * u, 1.8f * u, C_TEXT_ON_ACCENT);
-        stroke(left + 6.0f * u, upper + 9.8f * u, left + 10.6f * u, upper + 4.4f * u, 1.8f * u, C_TEXT_ON_ACCENT);
-    } else {
-        round_fill(x, top, size, size, 4 * ui, C_MARK, 255);
-        round_fill(x + ui / 2 + 1, top + ui / 2 + 1, size - 2 * (ui / 2 + 1), size - 2 * (ui / 2 + 1),
-                   4 * ui - ui / 2 - 1, C_DROP, 255);
-    }
-    return;
-#endif
     if (checked) {
         int i;
         fill(x, top, size, size, C_ACCENT, 255);
@@ -1562,18 +1412,14 @@ static void draw_notice(void)
     int x, y, w, h, i, top;
     notice_geometry(&x, &y, &w, &h);
     if (canvas->alpha) clear_alpha_rect(x, y, w + SHADOW, h + SHADOW);
-#ifndef MEMORIES_IOS
     for (i = SHADOW; i > 0; i--) {
         unsigned alpha = (unsigned)(10 + (SHADOW - i) * 8 / ui);
         fill(x + w, y + i, i, h, 0x000000u, alpha);
         fill(x + i, y + h, w, i, 0x000000u, alpha);
     }
-#endif
-    round_fill(x, y, w, h, NOTICE_R, C_DROP, 255);
-    round_outline(x, y, w, h, NOTICE_R, C_DROP_EDGE);
-#ifndef MEMORIES_IOS
+    fill(x, y, w, h, C_DROP, 255);
+    outline(x, y, w, h, C_DROP_EDGE);
     fill(x, y, w, 3 * ui, C_ACCENT, 255);
-#endif
     top = y + NOTICE_PAD;
     draw_text(x + NOTICE_PAD, top + NOTICE_LINE / 2, notice.title, C_TEXT_ON_ACCENT);
     top += NOTICE_LINE + 6 * ui;
@@ -1589,11 +1435,8 @@ static void draw_notice(void)
     for (i = 0; i < notice.count; i++) {
         int bx, by, bw, focus = i == notice.focus;
         notice_button(i, &bx, &by, &bw);
-        round_fill(bx, by, bw, NOTICE_BUTTON_H, NOTICE_R > 0 ? NOTICE_BUTTON_H / 2 : 0,
-                   focus ? C_ACCENT : i == notice.hover ? C_TRACK : C_BAR_HOVER, 255);
-#ifndef MEMORIES_IOS
+        fill(bx, by, bw, NOTICE_BUTTON_H, focus ? C_ACCENT : i == notice.hover ? C_TRACK : C_BAR_HOVER, 255);
         if (!focus) outline(bx, by, bw, NOTICE_BUTTON_H, C_DROP_EDGE);
-#endif
         draw_text(bx + NOTICE_BUTTON_PAD, by + NOTICE_BUTTON_H / 2, notice.buttons[i], focus ? C_TEXT_ON_ACCENT : C_TEXT);
     }
 }
@@ -1736,16 +1579,16 @@ void Menu_Draw(MenuCanvas *into)
             clear_alpha_rect(x, y, w + SHADOW, h + SHADOW);
         }
     }
-    fill(0, 0, canvas->width, MENU_H - 1, C_BAR, BAR_ALPHA);
+    fill(0, 0, canvas->width, MENU_H - 1, C_BAR, 255);
     fill(0, MENU_H - 1, canvas->width, 1, C_BAR_EDGE, 255);
     for (i = 0; i < MENU_COUNT; i++) {
         const Menu *menu = &menus[i];
         uint32_t ink = C_TEXT;
         if (i == open_menu) {
-            round_fill(menu->x, PILL_INSET, menu->w, MENU_H - 1 - 2 * PILL_INSET, BAR_R, C_ROW_HOT, 255);
-            ink = C_ON_ROW_HOT;
+            fill(menu->x, 0, menu->w, MENU_H - 1, C_ACCENT, 255);
+            ink = C_TEXT_ON_ACCENT;
         } else if (i == hover_bar) {
-            round_fill(menu->x, PILL_INSET, menu->w, MENU_H - 1 - 2 * PILL_INSET, BAR_R, C_BAR_HOVER, 255);
+            fill(menu->x, 0, menu->w, MENU_H - 1, C_BAR_HOVER, 255);
         }
         draw_text(menu->x + BAR_PAD, MENU_H / 2, menu->label, ink);
     }
@@ -1758,15 +1601,13 @@ void Menu_Draw(MenuCanvas *into)
          * box is opaque), so blend just each copy's right and bottom strips:
          * blending whole boxes was 12 alpha passes over a 4K dropdown every
          * frame, and the game crawled while a menu was open. */
-#ifndef MEMORIES_IOS /* square shadows would not fit the rounded panels */
         for (i = SHADOW; i > 0; i--) {
             unsigned alpha = (unsigned)(10 + (SHADOW - i) * 8 / ui);
             fill(x + w, y + i, i, h, 0x000000u, alpha);
             fill(x + i, y + h, w, i, 0x000000u, alpha);
         }
-#endif
-        round_fill(x, y, w, h, DROP_R, C_DROP, 255);
-        round_outline(x, y, w, h, DROP_R, C_DROP_EDGE);
+        fill(x, y, w, h, C_DROP, 255);
+        outline(x, y, w, h, C_DROP_EDGE);
         scrolls = rows_origin(level, &top);
         if (scrolls) {
             clip_top = y + SCROLL_BAND;
@@ -1776,8 +1617,8 @@ void Menu_Draw(MenuCanvas *into)
             const Item *item = &menu->items[i];
             int middle, hot = i == hot_row;
             int disabled = item->flags & ITEM_DISABLED;
-            uint32_t ink = disabled ? C_TEXT_DIM : hot ? C_ON_ROW_HOT : C_TEXT;
-            uint32_t dim = disabled ? C_TEXT_DIM : hot ? C_ON_ROW_HOT : C_TEXT_DIM;
+            uint32_t ink = disabled ? C_TEXT_DIM : hot ? C_TEXT_ON_ACCENT : C_TEXT;
+            uint32_t dim = disabled ? C_TEXT_DIM : hot ? C_TEXT_ON_ACCENT : C_TEXT_DIM;
             if (item->kind == ITEM_SEPARATOR) {
                 fill(x + ITEM_PAD, top + SEP_H / 2, w - ITEM_PAD * 2, 1, C_SEP, 255);
                 top += SEP_H;
@@ -1789,7 +1630,7 @@ void Menu_Draw(MenuCanvas *into)
             }
             middle = top + ITEM_H / 2;
             if (hot && !disabled) {
-                round_fill(x + ROW_INSET, top, w - 2 * ROW_INSET, ITEM_H, ROW_R, C_ROW_HOT, 255);
+                fill(x + 3 * ui, top, w - 6 * ui, ITEM_H, C_ACCENT, 255);
             }
             if (item->kind == ITEM_CHECK) {
                 draw_check(x + ITEM_PAD, middle, item_state(item));
@@ -1810,15 +1651,10 @@ void Menu_Draw(MenuCanvas *into)
                 slider_geometry(level, i, &sx, &sm);
                 knob = sx + KNOB_R + (setting - minimum) * (SLIDER_W - KNOB_R * 2) / (maximum - minimum);
                 filled = knob - sx;
-                round_fill(sx, sm - SLIDER_H / 2, SLIDER_W, SLIDER_H, SLIDER_H / 2 * (BAR_R > 0), C_TRACK, 255);
-                round_fill(sx, sm - SLIDER_H / 2, filled, SLIDER_H, SLIDER_H / 2 * (BAR_R > 0), hot ? C_SLIDER_HOT : C_ACCENT, 255);
-#ifdef MEMORIES_IOS /* iOS's round white knob, a little larger than the track's ends */
-                disc(knob, sm + ui / 2, KNOB_R + 2 * ui, C_KNOB_EDGE);
-                disc(knob, sm, KNOB_R + 2 * ui, C_KNOB);
-#else
+                fill(sx, sm - SLIDER_H / 2, SLIDER_W, SLIDER_H, C_TRACK, 255);
+                fill(sx, sm - SLIDER_H / 2, filled, SLIDER_H, hot ? C_TEXT_ON_ACCENT : C_ACCENT, 255);
                 disc(knob, sm, KNOB_R, C_KNOB_EDGE);
                 disc(knob, sm, KNOB_R - 1, C_KNOB);
-#endif
                 snprintf(value, sizeof(value), "%d", setting);
                 draw_text(sx + SLIDER_W + 12 * ui, middle, value, setting ? ink : dim);
             }
